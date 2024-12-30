@@ -89,6 +89,36 @@ struct address_resolver {
     }
 };
 
+struct http_request_parser {
+    std::string m_header;
+    std::string m_body;
+    bool m_header_finished{};
+    bool m_body_finished{};
+
+    [[nodiscard]] bool need_more_chunks() const {
+        return !m_header_finished;
+    }
+
+    void push_chunk(const std::string_view &chunk) {
+        if (!m_header_finished) {
+            m_header.append(chunk);
+            size_t m_header_len = m_header.find("\r\n");
+            if (m_header_len != std::string::npos) {
+                //! header already finished
+                m_header_finished = true;
+                m_body = m_header.substr(m_header_len);
+                //! pop out the redundant body part
+                m_header.resize(m_header_len);
+                //! TODO : parse body out
+                //! TODO : assert body has no content inside
+                m_body_finished = true;
+            }
+        } else {
+            m_body.append(chunk);
+        }
+    }
+};
+
 std::vector<std::thread> thread_pool;
 int main() {
     setlocale(LC_ALL, "zh_CN.UTF-8");
@@ -112,7 +142,17 @@ int main() {
             size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
             std::string result(buff, read_len);
             // echo server
-            check_error("write", write(connectfd, result.c_str(), read_len));
+            std::cout << result << '\n';
+            auto p = result.find("\r\n\r\n");
+            if (p != std::string::npos) {
+
+            }
+            std::string response = std::string("HTTP/1.1 200 OK\r\n") + 
+                                   std::string("Server: co_http\r\n") +
+                                   std::string("Connection: close\r\n") +
+                                   std::string("Content-length: 12\r\n\r\n") +
+                                   std::string("Hello,World!");
+            check_error("write", write(connectfd, response.c_str(), response.size()));
             close(connectfd);
         });
     }

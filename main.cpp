@@ -5,10 +5,13 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <unistd.h>
+// C include
 #include <iostream>
 #include <optional>
 #include <thread>
 #include <vector>
+#include <algorithm>
+// C++ include
 
 int check_error(const std::string &error_type, int result) {
     if (result == -1) {
@@ -92,6 +95,7 @@ struct address_resolver {
 struct http_request_parser {
     std::string m_header;
     std::string m_body;
+    size_t m_content_length{};
     bool m_header_finished{};
     bool m_body_finished{};
 
@@ -99,18 +103,45 @@ struct http_request_parser {
         return !m_header_finished;
     }
 
+    void extract_headers() {
+        for (auto pos = m_header.find("\r\n"); pos != std::string::npos; ) {
+            //! skip \r\n
+            pos += 2;
+            size_t next_pos = m_header.find("\r\n", pos);
+            size_t line_len = next_pos == std::string::npos ? next_pos : next_pos - pos;
+            //! cut the content
+            std::string line = m_header.substr(pos, line_len);
+            size_t colon = line.find(":");
+            if (colon != std::string::npos) {
+                //! key : value
+                std::string key = line.substr(0, colon);
+                std::string value = line.substr(colon);
+                //! convert key to lower_case alphabet
+                std::transform(value.begin(), value.end(), value.begin(), [](auto i) {
+                    i = i ^ 'A' ^ 'a';
+                    return i;
+                });
+                if (key == "content-length") {
+                    m_content_length = std::stoi(value);
+                }
+            }
+            pos = next_pos;
+        }
+    }
+
     void push_chunk(const std::string_view &chunk) {
         if (!m_header_finished) {
             m_header.append(chunk);
-            size_t m_header_len = m_header.find("\r\n");
+            size_t m_header_len = m_header.find("\r\n\r\n");
             if (m_header_len != std::string::npos) {
                 //! header already finished
                 m_header_finished = true;
-                m_body = m_header.substr(m_header_len);
+                //! remove \r\n\r\n
+                m_body = m_header.substr(m_header_len + 4);
                 //! pop out the redundant body part
                 m_header.resize(m_header_len);
-                //! TODO : parse body out
-                //! TODO : assert body has no content inside
+                //! parse body out
+                
                 m_body_finished = true;
             }
         } else {
@@ -139,25 +170,25 @@ int main() {
         int connectfd = check_error("accept", accept(listen_sockfd, &addr.m_addr, &addr.m_addrlen));
         thread_pool.emplace_back([connectfd] {
             char buff[1024];
-            size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
-            std::string result(buff, read_len);
-            // echo server
-            std::cout << result << '\n';
-            auto p = result.find("\r\n\r\n");
-            if (p != std::string::npos) {
-
-            }
+            http_request_parser parser;
+            do {
+                size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
+                parser.push_chunk(std::string(buff, read_len));
+            } while (parser.need_more_chunks());
+            std::cout << "get connect from: " << parser.m_header << '\n';
+            std::cout << "content is: " << parser.m_body << '\n';
+            size_t length = parser.m_body.size();
             std::string response = std::string("HTTP/1.1 200 OK\r\n") + 
                                    std::string("Server: co_http\r\n") +
                                    std::string("Connection: close\r\n") +
-                                   std::string("Content-length: 12\r\n\r\n") +
-                                   std::string("Hello,World!");
+                                   std::string("Content-length: " + std::to_string(length) + "\r\n\r\n") +
+                                   parser.m_body;
             check_error("write", write(connectfd, response.c_str(), response.size()));
             close(connectfd);
         });
     }
 
     for (auto &i : thread_pool) i.join();
-
+    close(listen_sockfd);
     return 0;
 }

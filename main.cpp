@@ -118,7 +118,7 @@ struct http_request_parser {
                 std::string value = line.substr(colon);
                 //! convert key to lower_case alphabet
                 std::transform(value.begin(), value.end(), value.begin(), [](auto i) {
-                    i = i ^ 'A' ^ 'a';
+                    if ('A' <= i && i <= 'Z') i = i ^ 'A' ^ 'a';
                     return i;
                 });
                 if (key == "content-length") {

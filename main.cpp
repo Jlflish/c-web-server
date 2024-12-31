@@ -291,6 +291,78 @@ enum class http_method {
     CONNECT,
 };
 
+template <class HeaderParser = http11_request_parser>
+struct http_response_parser : _http_base_parser<HeaderParser> {
+    int status() {
+        auto s = this->_headline_second();
+        try {
+            return std::stoi(s);
+        } catch (std::logic_error const &) {
+            return -1;
+        }
+    }
+};
+
+struct http11_header_writer {
+    std::string m_buffer;
+
+    void reset_state() {
+        std::string().swap(m_buffer);
+    }
+
+    std::string &buffer() {
+        return m_buffer;
+    }
+
+    void begin_header(std::string_view first, std::string_view second, std::string_view third) {
+        m_buffer.append(first);
+        m_buffer.append(" ");
+        m_buffer.append(second);
+        m_buffer.append(" ");
+        m_buffer.append(third);
+    }
+
+    void write_header(std::string_view key, std::string_view value) {
+        m_buffer.append("\r\n");
+        m_buffer.append(key);
+        m_buffer.append(": ");
+        m_buffer.append(value);
+    }
+
+    void end_header() {
+        m_buffer.append("\r\n\r\n");
+    }
+};
+
+template <class HeadWriter = http11_header_writer>
+struct _http_base_writer {
+    HeadWriter m_header_writer;
+
+    void reset_state() {
+        m_header_writer.reset_state();
+    }
+
+    void _begin_header(std::string_view first, std::string_view second, std::string_view third) {
+        m_header_writer.begin_header(first, second, third);
+    }
+
+    HeadWriter &buffer() {
+        return m_header_writer;
+    }
+
+    void _write_header(std::string_view key, std::string_view value) {
+        m_header_writer.write_header(key, value);
+    }
+
+    void _end_header() {
+        m_header_writer.end_header();
+    }
+
+    void _write_body(std::string_view body) {
+        m_header_writer.buffer().append(body);
+    }
+};
+
 std::vector<std::thread> thread_pool;
 int main() {
     setlocale(LC_ALL, "zh_CN.UTF-8");
@@ -310,21 +382,30 @@ int main() {
         socket_address_storage addr;
         int connectfd = check_error("accept", accept(listen_sockfd, &addr.m_addr, &addr.m_addrlen));
         thread_pool.emplace_back([connectfd] {
-            char buff[1024];
-            _http_base_parser parser;
-            do {
-                size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
-                parser.push_chunk(std::string(buff, read_len));
-            } while (!parser.header_finished());
-            std::cout << "get request header: " << parser.headers_raw() << '\n';
-            std::cout << "get request content: " << parser.body() << '\n';
-            size_t length = parser.body().size();
-            std::string response = std::string("HTTP/1.1 200 OK\r\n") + 
-                                   std::string("Server: co_http\r\n") +
-                                   std::string("Connection: close\r\n") +
-                                   std::string("Content-length: " + std::to_string(length) + "\r\n\r\n") +
-                                   parser.body();
-            check_error("write", write(connectfd, response.c_str(), response.size()));
+            try {
+                char buff[1024];
+                _http_base_parser parser;
+
+                while (!parser.header_finished()) {
+                    size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
+                    if (read_len == 0) break;
+                    parser.push_chunk(std::string(buff, read_len));
+                }
+
+                _http_base_writer result_writer;
+                result_writer._begin_header("HTTP/1.1", "200", "OK");
+                result_writer._write_header("Server", "co_http");
+                result_writer._write_header("Connection", "close");
+                result_writer._write_header("Content-length", std::to_string(parser.body().size()));
+                result_writer._end_header();
+                result_writer._write_body(parser.body());
+                auto response_buffer = result_writer.buffer().buffer();
+                check_error("write", write(connectfd, response_buffer.c_str(), response_buffer.size()));
+
+            } catch (const std::exception& e) {
+                std::cerr << "Exception: " << e.what() << '\n';
+            }
+
             close(connectfd);
         });
     }

@@ -395,10 +395,12 @@ int main() {
                 _http_base_writer result_writer;
                 result_writer._begin_header("HTTP/1.1", "200", "OK");
                 result_writer._write_header("Server", "co_http");
+                result_writer._write_header("Content-type", "text/html;charset=utf-8");
                 result_writer._write_header("Connection", "close");
-                result_writer._write_header("Content-length", std::to_string(parser.body().size()));
+                const std::string response = parser.body().empty() ? "您的正文为空" : parser.body();
+                result_writer._write_header("Content-length", std::to_string(response.size()));
                 result_writer._end_header();
-                result_writer._write_body(parser.body());
+                result_writer._write_body(response);
                 auto response_buffer = result_writer.buffer().buffer();
                 check_error("write", write(connectfd, response_buffer.c_str(), response_buffer.size()));
 

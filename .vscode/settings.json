@@ -62,6 +62,7 @@
         "variant": "cpp",
         "format": "cpp",
         "__nullptr": "cpp",
-        "ranges": "cpp"
+        "ranges": "cpp",
+        "map": "cpp"
     }
 }

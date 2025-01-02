@@ -14,7 +14,12 @@
 #include <algorithm>
 #include <map>
 #include <cstring>
+#include <type_traits>
+#include <utility>
 //! C++ include
+#include "expected.hpp"
+#include "callback.hpp"
+//! lab include
 
 //! use gai category to check server's error
 std::error_category const &gai_category() {
@@ -29,6 +34,24 @@ std::error_category const &gai_category() {
     } instance;
     return instance;
 }
+
+struct file_descriptor {
+    int m_fd = -1;
+
+    file_descriptor() = default;
+
+    explicit file_descriptor(int fd) : m_fd(fd) {}
+    
+    file_descriptor(file_descriptor &&init) noexcept : m_fd(std::move(init.m_fd)) {
+        init.m_fd = -1;
+    }
+
+    ~file_descriptor() {
+        if (m_fd != -1) {
+            close(m_fd);
+        }
+    }
+};
 
 //! check error function can only check system's error
 template <class T>
@@ -110,6 +133,24 @@ struct address_resolver {
             throw std::system_error(std::error_code(err, gai_category()), name + ":" + service);
         }
         return {head};
+    }
+};
+
+struct async_file : file_descriptor {
+    async_file() = default;
+
+    explicit async_file(int fd) : file_descriptor(fd) {
+        int flag = convert_error(fcntl(m_fd, F_GETFL)).expect("F_GETFL");
+        flag |= O_NONBLOCK;
+        convert_error(fcntl(m_fd, F_SETFL, flag)).expect("F_SETFL");
+
+        struct epoll_event event;
+        event.events = EPOLLET;
+        event.data.ptr = nullptr;
+        convert_error(
+            epoll_ctl(get().m_epfd, EPOLL_CTL_ADD, m_fd, &event)
+        ).expect("EPOLL_CTL_ADD");
+
     }
 };
 

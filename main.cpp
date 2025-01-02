@@ -6,7 +6,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <assert.h>
-// C include
+//! C include
 #include <iostream>
 #include <optional>
 #include <thread>
@@ -14,9 +14,9 @@
 #include <algorithm>
 #include <map>
 #include <cstring>
-// C++ include
+//! C++ include
 
-//! use gai category to check server's errors
+//! use gai category to check server's error
 std::error_category const &gai_category() {
     static struct final : std::error_category {
         char const *name() const noexcept override {
@@ -30,7 +30,7 @@ std::error_category const &gai_category() {
     return instance;
 }
 
-//! check error function can only check system error
+//! check error function can only check system's error
 template <class T>
 T check_error(const std::string &error_type, T result) {
     if (result == -1) {
@@ -410,7 +410,7 @@ void server() {
                 result_writer._write_header("Server", "co_http");
                 result_writer._write_header("Content-type", "text/html;charset=utf-8");
                 result_writer._write_header("Connection", "keep-alive");
-                const std::string response = parser.body().empty() ? "您的正文为空" : parser.body();
+                const std::string response = parser.body().empty() ? "your request content is empty" : parser.body();
                 result_writer._write_header("Content-length", std::to_string(response.size()));
                 result_writer._end_header();
                 result_writer._write_body(response);

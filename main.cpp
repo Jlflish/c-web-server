@@ -13,20 +13,29 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <cstring>
 // C++ include
 
-int check_error(const std::string &error_type, int result) {
-    if (result == -1) {
-        perror(error_type.c_str());
-        throw;
-    }
-    return result;
+//! use gai category to check server's errors
+std::error_category const &gai_category() {
+    static struct final : std::error_category {
+        char const *name() const noexcept override {
+            return "getaddrinfo";
+        }
+
+        std::string message(int err) const override {
+            return gai_strerror(err);
+        }
+    } instance;
+    return instance;
 }
 
-size_t check_error(const std::string &error_type, ssize_t result) {
+//! check error function can only check system error
+template <class T>
+T check_error(const std::string &error_type, T result) {
     if (result == -1) {
-        perror(error_type.c_str());
-        throw;
+        std::cerr << error_type << ' ' << std::strerror(errno) << '\n';
+        throw std::system_error(std::error_code(errno, std::system_category()), error_type);
     }
     return result;
 }
@@ -49,6 +58,7 @@ struct socket_address_storage {
 };
 
 struct address_resolved_entry {
+
     struct addrinfo *m_curr = nullptr;
 
     socket_address_fatptr get_address() {
@@ -57,6 +67,14 @@ struct address_resolved_entry {
 
     int create_socket() {
         return check_error("socket", socket(m_curr->ai_family, m_curr->ai_socktype, m_curr->ai_protocol));
+    }
+
+    int create_socket_and_bind() {
+        int listen_sockfd = create_socket();
+        auto server_address = get_address();
+        check_error("bind", bind(listen_sockfd, server_address.m_addr, server_address.m_addrlen));
+        check_error("listen", listen(listen_sockfd, SOMAXCONN));
+        return listen_sockfd;
     }
 
     [[nodiscard]] bool next_entry() {
@@ -69,6 +87,7 @@ struct address_resolved_entry {
 };
 
 struct address_resolver {
+    
     struct addrinfo *head = nullptr;
 
     address_resolver() = default;
@@ -85,11 +104,11 @@ struct address_resolver {
         freeaddrinfo(head);
     }
 
-    void resolve(const std::string &name, const std::string &service) {
-        check_error("resolve", getaddrinfo(name.c_str(), service.c_str(), NULL, &head));
-    }
-
-    address_resolved_entry get_first_entry() {
+    address_resolved_entry resolve(const std::string &name, const std::string &service) {
+        int err = getaddrinfo(name.c_str(), service.c_str(), NULL, &head);
+        if (err != 0) {
+            throw std::system_error(std::error_code(err, gai_category()), name + ":" + service);
+        }
         return {head};
     }
 };
@@ -364,55 +383,54 @@ struct _http_base_writer {
 };
 
 std::vector<std::thread> thread_pool;
-int main() {
-    setlocale(LC_ALL, "zh_CN.UTF-8");
-
-    struct address_resolver resolver("localhost", "8080");
-
-    auto address_entry = resolver.get_first_entry();
-    
-    int listen_sockfd = address_entry.create_socket();
-    
-    auto server_address = address_entry.get_address();
-
-    check_error("bind", bind(listen_sockfd, server_address.m_addr, server_address.m_addrlen));
-    check_error("listen", listen(listen_sockfd, SOMAXCONN));
-
+void server() {
+    struct address_resolver resolver;
+    auto address_entry = resolver.resolve("localhost", "8080");
+    int listen_sockfd = address_entry.create_socket_and_bind();
     while (true) {
         socket_address_storage addr;
         int connectfd = check_error("accept", accept(listen_sockfd, &addr.m_addr, &addr.m_addrlen));
         thread_pool.emplace_back([connectfd] {
-            try {
+            while (true) {
+                std::cout << "connection from id: " << connectfd << '\n';
                 char buff[1024];
                 _http_base_parser parser;
 
                 while (!parser.header_finished()) {
                     size_t read_len = check_error("read", read(connectfd, buff, sizeof buff));
-                    if (read_len == 0) break;
+                    if (read_len == 0) {
+                        std::cout << "connection id: " << connectfd << ' ' << "closed the connection\n";
+                        goto client_close_exit;
+                    }
                     parser.push_chunk(std::string(buff, read_len));
                 }
-
+                // std::cout << "connection header: " << parser.headers_raw() << '\n';
                 _http_base_writer result_writer;
                 result_writer._begin_header("HTTP/1.1", "200", "OK");
                 result_writer._write_header("Server", "co_http");
                 result_writer._write_header("Content-type", "text/html;charset=utf-8");
-                result_writer._write_header("Connection", "close");
+                result_writer._write_header("Connection", "keep-alive");
                 const std::string response = parser.body().empty() ? "您的正文为空" : parser.body();
                 result_writer._write_header("Content-length", std::to_string(response.size()));
                 result_writer._end_header();
                 result_writer._write_body(response);
                 auto response_buffer = result_writer.buffer().buffer();
                 check_error("write", write(connectfd, response_buffer.c_str(), response_buffer.size()));
-
-            } catch (const std::exception& e) {
-                std::cerr << "Exception: " << e.what() << '\n';
             }
-
+            client_close_exit:
+            std::cout << "connection closed\n";
             close(connectfd);
         });
     }
-
-    for (auto &i : thread_pool) i.join();
     close(listen_sockfd);
+}
+int main() {
+    setlocale(LC_ALL, "zh_CN.UTF-8");
+    try {
+        server();
+    } catch (const std::exception& e) {
+        std::cerr << "Exception: " << e.what() << '\n';
+    }
+    for (auto &i : thread_pool) i.join();
     return 0;
 }

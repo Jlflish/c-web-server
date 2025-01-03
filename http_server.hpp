@@ -42,17 +42,17 @@ struct http_server : std::enable_shared_from_this<http_server> {
         std::map<std::string, callback<http_request &>> m_routes;
 
         void route(std::string url, callback<http_request &> cb) {
-            // 为指定路径设置回调函数
+            // set callback function for url
             m_routes.insert_or_assign(url, std::move(cb));
         }
 
         void do_handle(http_request &request) {
-            // 寻找匹配的路径
+            // find url matched 
             auto it = m_routes.find(request.url);
             if (it != m_routes.end()) {
                 return it->second(multishot_call, request);
             }
-            // fmt::println("找不到路径: {}", request.url);
+            // cannot find url;
             return request.write_response(404, "404 Not Found");
         }
     };

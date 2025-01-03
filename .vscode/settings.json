@@ -64,6 +64,10 @@
         "__nullptr": "cpp",
         "ranges": "cpp",
         "map": "cpp",
-        "locale": "cpp"
-    }
+        "locale": "cpp",
+        "expected": "cpp",
+        "cinttypes": "cpp",
+        "cassert": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "enabled"
 }

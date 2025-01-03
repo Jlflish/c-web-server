@@ -1,7 +1,8 @@
 #include <iostream>
+#include <vector>
+#include <thread>
 #include "io_context.hpp"
 #include "http_server.hpp"
-
 void server() {
     io_context ctx;
     auto server = http_server::make();
@@ -18,11 +19,15 @@ void server() {
     server->do_start("localhost", "8080");
     ctx.join();
 }
+
 int main() {
-    try {
-        server();
-    } catch (const std::exception& e) {
-        std::cerr << "Exception: " << e.what() << '\n';
+    std::vector<std::thread> thread_pool;
+    const size_t max_threads = std::thread::hardware_concurrency();
+    for (size_t i = 0; i < max_threads; ++i) {
+        thread_pool.emplace_back(server);
+    }
+    for (auto &thread : thread_pool) {
+        thread.join();
     }
     return 0;
 }

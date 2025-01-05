@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>My website</title>
+        <meta charset = "UTF-8">
+    </head>
+    <body>
+        <h1>chatroom</h1>
+        <p>c++ chatroom implemented by myself</p>
+        <textarea id="result"> </textarea>
+        <input type="text" id="msg"/>
+        <button id="send">send message</button>
+        <button id="flush">flush</button>
+        <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                $("#send").click(function() {
+                    var text = $("#msg").val();
+                    $.post("/send", {user_id : 1, message: text}, function(data) {              
+                        console.log("/send get:", data);
+                    });
+                    $("#msg").val('');
+                    console.log(text);
+                });
+                setInterval(function() {
+                    $.post("/recv", {}, function(data) {
+                        $("#result").val(data);
+                    });
+                }, 1000);
+            });
+            console.info("I hate working");
+        </script>
+    </body>
+</html>

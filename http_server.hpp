@@ -169,7 +169,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
         return m_listening.async_accept(m_addr, [self = shared_from_this()](
                                                     expected<int> ret) {
             auto connfd = ret.expect("accept");
-            std::cerr << "accept a connection from id: " << connfd << '\n';
+            // std::cerr << "accept a connection from id: " << connfd << '\n';
             http_connection_handler::make()->do_start(&self->m_router, connfd);
             return self->do_accept();
         });

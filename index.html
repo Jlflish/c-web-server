@@ -7,28 +7,35 @@
     <body>
         <h1>chatroom</h1>
         <p>c++ chatroom implemented by myself</p>
-        <textarea id="result"> </textarea>
-        <input type="text" id="msg"/>
+        <div id="messages"></div>
+        <br/>
+        <input type="text" id="user" placeholder="your username"/>
+        <input type="text" id="content" placeholder="type your message"/>
         <button id="send">send message</button>
-        <button id="flush">flush</button>
         <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
         <script>
             $(document).ready(function() {
                 $("#send").click(function() {
-                    var text = $("#msg").val();
-                    $.post("/send", {user_id : 1, message: text}, function(data) {              
+                    var user = $("#user").val();
+                    var content = $("#content").val();
+                    $.post("/send", JSON.stringify({user, content}), function(data) {              
                         console.log("/send get:", data);
+                        $("#content").val('');
                     });
-                    $("#msg").val('');
-                    console.log(text);
                 });
-                setInterval(function() {
+                function poll() {
                     $.post("/recv", {}, function(data) {
-                        $("#result").val(data);
+                        console.log("/recv get:", data);
+                        var messages = JSON.parse(data);
+                        $("#messages").html('');
+                        for (var i = 0; i < messages.length; i++) {
+                            var msg = messages[i];
+                            $("#messages").append("<p>" + msg.user + ": " + msg.content + "</p>");
+                        }
                     });
-                }, 1000);
+                };
+                setInterval(poll, 1000);
             });
-            console.info("I hate working");
         </script>
     </body>
 </html>

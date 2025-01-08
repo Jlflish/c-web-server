@@ -1,15 +1,18 @@
 #include "io_context.hpp"
 #include "http_server.hpp"
 #include "file_utils.hpp"
+#include "reflect.hpp"
 #include <iostream>
 #include <vector>
 
 struct Message {
     std::string user;
     std::string content;
+
+    REFLECT(user, content);    
 };
 
-std::string msg_list;
+std::vector<Message> msg_list;
 
 void server() {
     io_context ctx;
@@ -23,12 +26,12 @@ void server() {
         request.write_response(200, response, "text/javascript");
     });
     server->get_router().route("/send", [](http_server::http_request &request) {
-        msg_list += request.body + "\n";
+        msg_list.push_back(reflect::json_decode<Message>(request.body));
         request.write_response(200, "msg get");
     });
     server->get_router().route("/recv", [](http_server::http_request &request) {
         std::cout << "get a message\n";
-        request.write_response(200, msg_list);
+        request.write_response(200, reflect::json_encode(msg_list));
     });
     server->do_start("localhost", "8080");
     ctx.join();

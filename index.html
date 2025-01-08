@@ -3,34 +3,110 @@
     <head>
         <title>My website</title>
         <meta charset = "UTF-8">
+        <style>
+            .message p {
+                margin: 3px;
+            }
+            div.message {
+                margin: 0px;
+                padding: 6px;
+            }
+            div.input-bar {
+                display: flex;
+                flex-direction: row;
+                margin-top: 10px;
+            }
+            .input-user {
+                width: 10%;
+            }
+            .input-content {
+                flex: 1;
+            }
+            .input-button {
+                flex: 1;
+            }
+            .message-user {
+                color: #666666;
+                font-weight: 600;
+            }
+            .message-user.message-current-user {
+                color: #559966;
+                font-weight: 600;
+            }
+            .message-content {
+                color: #333333;
+                font-weight: 300;
+            }
+            .brief {
+                color: #444444;
+                font-weight: 300;
+            }
+            body {
+                display: flex;
+                justify-content: center;
+            }
+            #container {
+                max-width: 800px;
+            }
+        </style>
     </head>
     <body>
-        <h1>chatroom</h1>
-        <p>c++ chatroom implemented by myself</p>
-        <div id="messages"></div>
-        <br/>
-        <input type="text" id="user" placeholder="your username"/>
-        <input type="text" id="content" placeholder="type your message"/>
-        <button id="send">send message</button>
-        <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+        <div id="container">
+            <h1>chatroom</h1>
+            <p>c++ chatroom implemented by myself</p>
+            <div class="message-list" id="messages"></div>
+            <div class="input-bar">
+                <input class="input-user" type="text" id="user" placeholder="your username"/>
+                <input class="input-content" type="text" id="content" placeholder="your message..." autocomplete="off"/>
+                <button class="send-button" id="send">send</button>
+            </div>
+        </div>
+        <script src="https://unpkg.com/jquery@3.7.1/dist/jquery.min.js"></script>
         <script>
             $(document).ready(function() {
                 $("#send").click(function() {
-                    var user = $("#user").val();
-                    var content = $("#content").val();
+                    var user = $("#user").val().trim();
+                    var content = $("#content").val().trim();
+                    if (user == '') {
+                        alert("please enter your user name")
+                        return;
+                    }
+                    if (content == '') {
+                        alert("message can't be empty");
+                        return;
+                    }
                     $.post("/send", JSON.stringify({user, content}), function(data) {              
                         console.log("/send get:", data);
                         $("#content").val('');
                     });
                 });
+                $("#content").keypress(function(event) {
+                    if (event.keyCode === 13) {
+                        $("#send").click();
+                    }
+                })
+                function escapeHtml(unsafe) {
+                    return unsafe
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                }
+                var messages_first = 0;
                 function poll() {
-                    $.post("/recv", {}, function(data) {
+                    $.post("/recv", JSON.stringify({first: messages_first}), function(data) {
                         console.log("/recv get:", data);
-                        var messages = JSON.parse(data);
+                        var submessages = JSON.parse(data);
+                        var current_user = $("#user").val();
                         $("#messages").html('');
-                        for (var i = 0; i < messages.length; i++) {
-                            var msg = messages[i];
-                            $("#messages").append("<p>" + msg.user + ": " + msg.content + "</p>");
+                        for (var i = 0; i < submessages.length; i++) {
+                            var message = submessages[i];
+                            messages_first++;
+                            var extra_class = '';
+                            if (message.user == current_user)
+                            extra_class = ' message-current-user';
+                            $("#messages").append(`<div class="message"><p class="message-user${extra_class}">${escapeHtml(message.user)}:</p><p class="message-content">${escapeHtml(message.content)}<p></div>`);
                         }
                     });
                 };
